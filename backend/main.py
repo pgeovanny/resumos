@@ -17,10 +17,10 @@ from utils import (
 
 app = FastAPI()
 
-# ATENÇÃO: CORS LIBERADO PARA QUALQUER ORIGEM (necessário para o frontend no Netlify funcionar)
+# CORS LIBERADO
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Troque para o domínio do seu Netlify quando estiver em produção
+    allow_origins=["*"],  # Troque pelo domínio do Netlify se quiser restringir
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -105,7 +105,6 @@ async def process_text(
     cargo: str = Form(None),
     ano: str = Form(None)
 ):
-    openai.api_key = OPENAI_API_KEY
     questoes = questoes_texto or ""
     if questoes_file is not None:
         questoes += "\n" + extract_text_from_file(questoes_file)
@@ -128,7 +127,8 @@ QUESTÕES DA BANCA:
 Comando extra: {command}
 Linguagem desejada: {estilo_linguagem}
 """
-    response = openai.ChatCompletion.create(
+    client = openai.OpenAI(api_key=OPENAI_API_KEY)
+    response = client.chat.completions.create(
         model="gpt-4o",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.3,
