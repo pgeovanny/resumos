@@ -1,96 +1,112 @@
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
-  <meta charset="UTF-8">
-  <title>Gabarite – Versão Legislação</title>
+  <meta charset="UTF-8" />
+  <title>Resumos Legislação com IA</title>
   <style>
-    body { font-family: Arial, sans-serif; margin: 20px; }
-    input[type="text"], textarea { width: 320px; }
+    body { background: #181A1F; color: #fff; font-family: Arial, sans-serif; padding: 32px; }
+    label { display: block; margin: 16px 0 4px; }
+    input, select, textarea, button {
+      font-size: 1em; width: 100%; max-width: 500px; margin-bottom: 12px; border-radius: 8px;
+      border: none; padding: 10px;
+    }
+    button { background: #0057FF; color: #fff; font-weight: bold; cursor: pointer; }
+    .container { background: #23272F; border-radius: 18px; padding: 28px; box-shadow: 0 3px 12px #0007; max-width: 600px; margin: auto;}
+    .output { background: #222; border-radius: 10px; margin-top: 20px; padding: 16px; white-space: pre-wrap;}
+    .file-label { margin-top: 12px; }
   </style>
 </head>
 <body>
-  <h1>Gabarite – Versão Legislação</h1>
-  <form id="formulario">
-    <div>
-      Ação:
-      <label><input type="radio" name="acao" value="Resumir" checked>Resumir</label>
-      <label><input type="radio" name="acao" value="Esquematizar">Esquematizar</label>
-    </div>
-    <div>
-      Arquivo base (.pdf, .docx): <input type="file" name="arquivo_base" id="arquivo_base">
-      (opcional: páginas ex: 1-5,7) <input type="text" id="paginas" size="8">
-      <button type="button" onclick="extrairTexto()">Extrair Texto</button>
-    </div>
-    <textarea id="text_base" rows="6" placeholder="Texto extraído aparece aqui"></textarea>
-    <div>
-      Banca:
-      <label><input type="radio" name="banca" value="Cespe" checked>Cespe</label>
-      <label><input type="radio" name="banca" value="FGV">FGV</label>
-      <label><input type="radio" name="banca" value="FCC">FCC</label>
-      <label><input type="radio" name="banca" value="Verbena">Verbena</label>
-      <label><input type="radio" name="banca" value="Outra">Outra</label>
-    </div>
-    <div>
-      Nível:
-      <label><input type="radio" name="nivel" value="Fácil">Fácil</label>
-      <label><input type="radio" name="nivel" value="Médio" checked>Médio</label>
-      <label><input type="radio" name="nivel" value="Difícil">Difícil</label>
-    </div>
-    <div>
-      Tom:
-      <label><input type="radio" name="tom" value="Técnico" checked>Técnico</label>
-      <label><input type="radio" name="tom" value="Didático">Didático</label>
-      <label><input type="radio" name="tom" value="Concursos">Concursos</label>
-      <label><input type="radio" name="tom" value="Personalizado">Personalizado</label>
-    </div>
-    <div>
-      Estilo de linguagem: <input type="text" name="estilo_linguagem" value="padrão">
-    </div>
-    <div>
-      Comando para IA: <input type="text" name="comando" value="esquematizar">
-    </div>
-    <div>
-      Cargo: <input type="text" name="cargo">
-      Ano: <input type="text" name="ano">
-    </div>
-    <div>
-      Questões da banca (texto):<br>
-      <textarea name="questoes_texto" rows="3" cols="50"></textarea>
-    </div>
-    <div>
-      Ou arquivo de questões (.txt, .docx, .csv): <input type="file" name="questoes_file">
-    </div>
-    <button type="submit">Enviar para IA</button>
-  </form>
-  <h3>Resultado:</h3>
-  <pre id="resultado"></pre>
+  <div class="container">
+    <h2>Resumos & Esquematizações de Legislação por IA</h2>
+    <form id="resumoForm">
+      <label for="text">Texto base (ou <b>cole o link da lei</b>):</label>
+      <textarea id="text" name="text" rows="5" required placeholder="Cole aqui o texto OU um link de lei"></textarea>
 
+      <label for="banca">Banca:</label>
+      <select id="banca" name="banca" required>
+        <option value="FGV">FGV</option>
+        <option value="Cespe">Cespe</option>
+        <option value="FCC">FCC</option>
+        <option value="Verbena">Verbena</option>
+        <option value="Outra">Outra</option>
+      </select>
+
+      <label for="command">Comando:</label>
+      <select id="command" name="command" required>
+        <option value="resumir">Resumir</option>
+        <option value="esquematizar">Esquematizar</option>
+      </select>
+
+      <label for="nivel">Nível:</label>
+      <select id="nivel" name="nivel">
+        <option value="Médio">Médio</option>
+        <option value="Superior">Superior</option>
+        <option value="Técnico">Técnico</option>
+        <option value="Outro">Outro</option>
+      </select>
+
+      <label for="tom">Tom do texto:</label>
+      <select id="tom" name="tom">
+        <option value="Didático">Didático</option>
+        <option value="Técnico">Técnico</option>
+        <option value="Resumido">Resumido</option>
+        <option value="Jurídico">Jurídico</option>
+      </select>
+
+      <label for="estilo_linguagem">Estilo de linguagem:</label>
+      <select id="estilo_linguagem" name="estilo_linguagem">
+        <option value="padrão">Padrão</option>
+        <option value="técnico">Técnico</option>
+        <option value="resumido">Resumido</option>
+      </select>
+
+      <label for="cargo">Cargo:</label>
+      <input type="text" id="cargo" name="cargo" placeholder="Ex: Analista, Escrivão, etc.">
+
+      <label for="ano">Ano:</label>
+      <input type="text" id="ano" name="ano" placeholder="Ex: 2023">
+
+      <label for="questoes_texto">Questões (opcional, cole aqui):</label>
+      <textarea id="questoes_texto" name="questoes_texto" rows="2" placeholder="Cole aqui questões reais da banca, se quiser"></textarea>
+
+      <label class="file-label" for="questoes_file">Ou anexe arquivo de questões (docx, txt, csv):</label>
+      <input type="file" id="questoes_file" name="questoes_file" accept=".docx,.txt,.csv">
+
+      <button type="submit">Gerar Resumo/Esquematização</button>
+    </form>
+    <div id="output" class="output"></div>
+  </div>
   <script>
-    const API_BASE = "https://resumos.onrender.com";
-
-    async function extrairTexto() {
-      const input = document.getElementById('arquivo_base');
-      const paginas = document.getElementById('paginas').value;
-      if (!input.files[0]) { alert("Selecione um arquivo."); return; }
-      const fd = new FormData();
-      fd.append("file", input.files[0]);
-      if (paginas) fd.append("paginas", paginas);
-
-      const resp = await fetch(API_BASE + "/upload", { method: "POST", body: fd });
-      const data = await resp.json();
-      document.getElementById("text_base").value = data.text || (data.error || "Erro na extração!");
-    }
-
-    document.getElementById("formulario").onsubmit = async function(e) {
+    document.getElementById('resumoForm').onsubmit = async function(e) {
       e.preventDefault();
-      const fd = new FormData(this);
-      fd.set("text", document.getElementById("text_base").value); // Usa texto extraído
-      // Necessário para manter compatível com backend
-      if (!fd.get("text")) { alert("Extraia o texto base antes de enviar."); return; }
+      const form = e.target;
+      const formData = new FormData(form);
 
-      const resp = await fetch(API_BASE + "/process", { method: "POST", body: fd });
-      const data = await resp.json();
-      document.getElementById("resultado").textContent = data.processed_text || (data.error || "Erro ao processar!");
+      // O backend espera o campo "modo"!
+      formData.append("modo", form.command.value);
+
+      // Corrige nome do campo caso você precise trocar no back
+      // formData.append("command", form.command.value);
+
+      document.getElementById('output').innerHTML = 'Processando... Aguarde ⏳';
+
+      try {
+        const resp = await fetch('https://resumos.onrender.com/process', {
+          method: 'POST',
+          body: formData,
+        });
+        const data = await resp.json();
+        if (data.processed_text) {
+          document.getElementById('output').textContent = data.processed_text;
+        } else if (data.error) {
+          document.getElementById('output').textContent = "Erro: " + data.error;
+        } else {
+          document.getElementById('output').textContent = "Erro inesperado.";
+        }
+      } catch (err) {
+        document.getElementById('output').textContent = "Erro na requisição.";
+      }
     };
   </script>
 </body>
