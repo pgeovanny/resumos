@@ -7,10 +7,11 @@ import os
 from docx import Document
 import openai
 
-from template_gabarite import (
+# IMPORTS RELATIVOS PARA PACOTES NO MESMO DIRETÓRIO
+from .template_gabarite import (
     set_header_footer, set_styles, add_sumario, add_titulo, add_subtitulo, add_paragrafo, add_quadro, add_pag_break
 )
-from utils import (
+from .utils import (
     parse_indice_ia, add_indice_estatistico, parse_special_blocks
 )
 
