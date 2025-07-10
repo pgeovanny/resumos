@@ -1,35 +1,24 @@
 from fastapi import FastAPI, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from enum import Enum
 import tempfile
 import os
 import pdfplumber
 from docx import Document
 import google.generativeai as genai
 
-# Configure a chave Gemini (adicione a variável de ambiente GOOGLE_API_KEY no Render)
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "SUA_CHAVE_GEMINI_AQUI")
-genai.configure(api_key=GOOGLE_API_KEY)
+# Carregue sua chave Gemini da variável de ambiente no Render
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "SUA_CHAVE_GEMINI_AQUI")
+genai.configure(api_key=GEMINI_API_KEY)
 
 app = FastAPI()
-
-# Habilita CORS total
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],   # Em produção, coloque o domínio do seu front!
+    allow_origins=["*"],  # Permite qualquer origem
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Enum para bancas
-class Bancas(str, Enum):
-    fgv = "FGV"
-    cespe = "Cespe"
-    fcc = "FCC"
-    verbena = "Verbena"
-    outra = "Outra"
 
 def extract_text_from_file(file: UploadFile):
     ext = os.path.splitext(file.filename)[1].lower()
@@ -47,8 +36,9 @@ def extract_text_from_file(file: UploadFile):
         import pandas as pd
         df = pd.read_csv(temp_file.name, dtype=str)
         text = "\n".join([" | ".join(row) for row in df.values.tolist()])
-    else:
-        text = ""
+    elif ext == ".pdf":
+        with pdfplumber.open(temp_file.name) as pdf:
+            text = "\n".join([page.extract_text() or "" for page in pdf.pages])
     os.unlink(temp_file.name)
     return text
 
@@ -61,6 +51,7 @@ async def upload_file(
     temp_file.write(await file.read())
     temp_file.close()
     ext = os.path.splitext(file.filename)[1]
+    text = ""
     if ext.lower() == ".pdf":
         with pdfplumber.open(temp_file.name) as pdf:
             num_pages = len(pdf.pages)
@@ -80,6 +71,9 @@ async def upload_file(
     elif ext.lower() in [".docx", ".doc"]:
         doc = Document(temp_file.name)
         text = "\n".join([p.text for p in doc.paragraphs])
+    elif ext.lower() == ".txt":
+        with open(temp_file.name, encoding="utf-8") as f:
+            text = f.read()
     else:
         os.unlink(temp_file.name)
         return JSONResponse({"error": "Formato não suportado"}, status_code=400)
@@ -88,17 +82,17 @@ async def upload_file(
 
 @app.post("/process")
 async def process_text(
+    acao: str = Form(...),
     text: str = Form(...),
-    command: str = Form("esquematizar"),
-    estilo_linguagem: str = Form("técnico"),
-    banca: Bancas = Form(...),
+    banca: str = Form(...),
+    nivel: str = Form(...),
+    tom: str = Form(...),
+    estilo_linguagem: str = Form(...),
+    comando: str = Form(...),
+    cargo: str = Form(None),
+    ano: str = Form(None),
     questoes_texto: str = Form(""),
-    questoes_file: UploadFile = File(None),
-    cargo: str = Form(""),
-    ano: str = Form(""),
-    modo: str = Form("esquematizar"),  # ou "resumir"
-    nivel: str = Form("Médio"),
-    tom: str = Form("Didático")
+    questoes_file: UploadFile = File(None)
 ):
     questoes = questoes_texto or ""
     if questoes_file is not None:
@@ -106,10 +100,10 @@ async def process_text(
 
     prompt = f"""
 Você é um especialista em concursos públicos.
+Ação: {acao}
 Banca: {banca} | Nível: {nivel} | Tom: {tom} | Cargo: {cargo} | Ano: {ano}
-Comando: {command}
+Comando: {comando}
 Estilo de linguagem: {estilo_linguagem}
-MODO: {modo}
 
 Texto base:
 {text}
@@ -118,13 +112,12 @@ Questões da banca (se houver):
 {questoes}
 
 # Instrução
-Gere o material solicitado acima. Faça resumo ou esquematize conforme o comando.
+Gere o material solicitado acima. Faça resumo ou esquematize conforme a AÇÃO.
 """
     try:
         model = genai.GenerativeModel("gemini-1.5-flash")
         response = model.generate_content(prompt)
-        result = response.text
+        processed = response.text
     except Exception as e:
-        return JSONResponse({"error": f"Erro ao chamar Gemini: {e}"}, status_code=500)
-
-    return {"processed_text": result}
+        return JSONResponse({"error": f"Erro ao chamar Gemini: {str(e)}"}, status_code=500)
+    return {"processed_text": processed}
