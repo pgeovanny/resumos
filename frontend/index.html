@@ -3,120 +3,95 @@
 <head>
   <meta charset="UTF-8">
   <title>Gabarite – Versão Legislação</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    input[type="text"], textarea { width: 320px; }
+  </style>
 </head>
 <body>
   <h1>Gabarite – Versão Legislação</h1>
-  <form id="upload-form">
-    <label>Ação:
-      <input type="radio" name="modo" value="resumir" checked>Resumir
-      <input type="radio" name="modo" value="esquematizar">Esquematizar
-    </label>
-    <br>
-    <label>Arquivo base (.pdf, .docx): <input type="file" id="base-arquivo"></label>
-    <input type="text" id="base-paginas" placeholder="Quais páginas? (ex: 1-5,7)">
-    <button type="button" onclick="uploadBase()">Extrair Texto</button>
-    <br>
-    <textarea id="campo-texto" rows="4" cols="80" placeholder="Texto extraído aparecerá aqui" readonly></textarea>
-    <br>
-    <label>Banca:
-      <input type="radio" name="banca" value="Cespe" checked>Cespe
-      <input type="radio" name="banca" value="FGV">FGV
-      <input type="radio" name="banca" value="FCC">FCC
-      <input type="radio" name="banca" value="Verbena">Verbena
-      <input type="radio" name="banca" value="Outra">Outra
-    </label>
-    <br>
-    <label>Nível:
-      <input type="radio" name="nivel" value="Fácil">Fácil
-      <input type="radio" name="nivel" value="Médio" checked>Médio
-      <input type="radio" name="nivel" value="Difícil">Difícil
-    </label>
-    <br>
-    <label>Tom:
-      <input type="radio" name="tom" value="Técnico">Técnico
-      <input type="radio" name="tom" value="Didático" checked>Didático
-      <input type="radio" name="tom" value="Concursos">Concursos
-      <input type="radio" name="tom" value="Personalizado">Personalizado
-    </label>
-    <br>
-    <label>Estilo de linguagem: <input type="text" name="estilo_linguagem" value="padrão"></label>
-    <br>
-    <label>Comando para IA: <input type="text" name="command" value="esquematizar"></label>
-    <br>
-    <label>Cargo: <input type="text" name="cargo"></label>
-    <br>
-    <label>Ano: <input type="text" name="ano"></label>
-    <br>
-    <label>Questões da banca (texto):<br>
-      <textarea name="questoes_texto" rows="2" cols="80"></textarea>
-    </label>
-    <br>
-    <label>Ou arquivo de questões (.txt, .docx, .csv): <input type="file" name="questoes_file"></label>
-    <br>
+  <form id="formulario">
+    <div>
+      Ação:
+      <label><input type="radio" name="acao" value="Resumir" checked>Resumir</label>
+      <label><input type="radio" name="acao" value="Esquematizar">Esquematizar</label>
+    </div>
+    <div>
+      Arquivo base (.pdf, .docx): <input type="file" name="arquivo_base" id="arquivo_base">
+      (opcional: páginas ex: 1-5,7) <input type="text" id="paginas" size="8">
+      <button type="button" onclick="extrairTexto()">Extrair Texto</button>
+    </div>
+    <textarea id="text_base" rows="6" placeholder="Texto extraído aparece aqui"></textarea>
+    <div>
+      Banca:
+      <label><input type="radio" name="banca" value="Cespe" checked>Cespe</label>
+      <label><input type="radio" name="banca" value="FGV">FGV</label>
+      <label><input type="radio" name="banca" value="FCC">FCC</label>
+      <label><input type="radio" name="banca" value="Verbena">Verbena</label>
+      <label><input type="radio" name="banca" value="Outra">Outra</label>
+    </div>
+    <div>
+      Nível:
+      <label><input type="radio" name="nivel" value="Fácil">Fácil</label>
+      <label><input type="radio" name="nivel" value="Médio" checked>Médio</label>
+      <label><input type="radio" name="nivel" value="Difícil">Difícil</label>
+    </div>
+    <div>
+      Tom:
+      <label><input type="radio" name="tom" value="Técnico" checked>Técnico</label>
+      <label><input type="radio" name="tom" value="Didático">Didático</label>
+      <label><input type="radio" name="tom" value="Concursos">Concursos</label>
+      <label><input type="radio" name="tom" value="Personalizado">Personalizado</label>
+    </div>
+    <div>
+      Estilo de linguagem: <input type="text" name="estilo_linguagem" value="padrão">
+    </div>
+    <div>
+      Comando para IA: <input type="text" name="comando" value="esquematizar">
+    </div>
+    <div>
+      Cargo: <input type="text" name="cargo">
+      Ano: <input type="text" name="ano">
+    </div>
+    <div>
+      Questões da banca (texto):<br>
+      <textarea name="questoes_texto" rows="3" cols="50"></textarea>
+    </div>
+    <div>
+      Ou arquivo de questões (.txt, .docx, .csv): <input type="file" name="questoes_file">
+    </div>
     <button type="submit">Enviar para IA</button>
   </form>
-  <br>
-  <b>Resultado:</b>
-  <div id="resultado" style="white-space:pre-wrap"></div>
+  <h3>Resultado:</h3>
+  <pre id="resultado"></pre>
 
-<script>
-// Extrai texto do arquivo base
-function uploadBase() {
-  const fileInput = document.getElementById("base-arquivo");
-  const paginas = document.getElementById("base-paginas").value;
-  const resultArea = document.getElementById("campo-texto");
-  if (!fileInput.files.length) {
-    alert("Selecione um arquivo!");
-    return;
-  }
-  let fd = new FormData();
-  fd.append("file", fileInput.files[0]);
-  fd.append("paginas", paginas);
+  <script>
+    const API_BASE = "https://resumos.onrender.com";
 
-  fetch("/upload", { method: "POST", body: fd })
-    .then(r => r.json())
-    .then(res => {
-      resultArea.value = res.text || "Erro ao extrair texto!";
-    })
-    .catch(() => resultArea.value = "Erro na extração!");
-}
+    async function extrairTexto() {
+      const input = document.getElementById('arquivo_base');
+      const paginas = document.getElementById('paginas').value;
+      if (!input.files[0]) { alert("Selecione um arquivo."); return; }
+      const fd = new FormData();
+      fd.append("file", input.files[0]);
+      if (paginas) fd.append("paginas", paginas);
 
-// Envia tudo para /process
-document.getElementById("upload-form").onsubmit = function(ev) {
-  ev.preventDefault();
-  let fd = new FormData();
-  // modo
-  fd.append("modo", document.querySelector('input[name="modo"]:checked').value);
-  // text extraído
-  fd.append("text", document.getElementById("campo-texto").value);
-  // banca, nivel, tom
-  fd.append("banca", document.querySelector('input[name="banca"]:checked').value);
-  fd.append("nivel", document.querySelector('input[name="nivel"]:checked').value);
-  fd.append("tom", document.querySelector('input[name="tom"]:checked').value);
-  // outros campos
-  fd.append("estilo_linguagem", document.querySelector('input[name="estilo_linguagem"]').value);
-  fd.append("command", document.querySelector('input[name="command"]').value);
-  fd.append("cargo", document.querySelector('input[name="cargo"]').value);
-  fd.append("ano", document.querySelector('input[name="ano"]').value);
-  fd.append("questoes_texto", document.querySelector('textarea[name="questoes_texto"]').value);
-  // arquivo de questões
-  let questoesFileInput = document.querySelector('input[name="questoes_file"]');
-  if (questoesFileInput.files.length) {
-    fd.append("questoes_file", questoesFileInput.files[0]);
-  }
+      const resp = await fetch(API_BASE + "/upload", { method: "POST", body: fd });
+      const data = await resp.json();
+      document.getElementById("text_base").value = data.text || (data.error || "Erro na extração!");
+    }
 
-  document.getElementById("resultado").innerText = "Processando...";
-  fetch("/process", { method: "POST", body: fd })
-    .then(r => r.json())
-    .then(res => {
-      if (res.processed_text) {
-        document.getElementById("resultado").innerText = res.processed_text;
-      } else {
-        document.getElementById("resultado").innerText = res.error || "Erro ao processar!";
-      }
-    })
-    .catch(() => document.getElementById("resultado").innerText = "Falha ao enviar!");
-}
-</script>
+    document.getElementById("formulario").onsubmit = async function(e) {
+      e.preventDefault();
+      const fd = new FormData(this);
+      fd.set("text", document.getElementById("text_base").value); // Usa texto extraído
+      // Necessário para manter compatível com backend
+      if (!fd.get("text")) { alert("Extraia o texto base antes de enviar."); return; }
+
+      const resp = await fetch(API_BASE + "/process", { method: "POST", body: fd });
+      const data = await resp.json();
+      document.getElementById("resultado").textContent = data.processed_text || (data.error || "Erro ao processar!");
+    };
+  </script>
 </body>
 </html>
