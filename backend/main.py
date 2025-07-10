@@ -1,6 +1,6 @@
 from fastapi import FastAPI, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import JSONResponse
 from enum import Enum
 import tempfile
 import os
@@ -8,19 +8,20 @@ import pdfplumber
 from docx import Document
 import google.generativeai as genai
 
-# CORS PARA QUALQUER ORIGEM
+# Configure a chave Gemini (adicione a variável de ambiente GOOGLE_API_KEY no Render)
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "SUA_CHAVE_GEMINI_AQUI")
+genai.configure(api_key=GOOGLE_API_KEY)
+
 app = FastAPI()
+
+# Habilita CORS total
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Libera geral
+    allow_origins=["*"],   # Em produção, coloque o domínio do seu front!
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Pegue sua chave Gemini no Render: Settings > Environment > GOOGLE_API_KEY
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "SUA_CHAVE_AQUI")
-genai.configure(api_key=GOOGLE_API_KEY)
 
 # Enum para bancas
 class Bancas(str, Enum):
@@ -30,7 +31,6 @@ class Bancas(str, Enum):
     verbena = "Verbena"
     outra = "Outra"
 
-# Extrai texto de arquivos diversos
 def extract_text_from_file(file: UploadFile):
     ext = os.path.splitext(file.filename)[1].lower()
     temp_file = tempfile.NamedTemporaryFile(delete=False)
@@ -89,52 +89,42 @@ async def upload_file(
 @app.post("/process")
 async def process_text(
     text: str = Form(...),
-    command: str = Form(...),
+    command: str = Form("esquematizar"),
     estilo_linguagem: str = Form("técnico"),
     banca: Bancas = Form(...),
-    questoes_texto: str = Form(None),
+    questoes_texto: str = Form(""),
     questoes_file: UploadFile = File(None),
-    cargo: str = Form(None),
-    ano: str = Form(None),
-    modo: str = Form("resumir")   # Novo campo para resumir ou esquematizar
+    cargo: str = Form(""),
+    ano: str = Form(""),
+    modo: str = Form("esquematizar"),  # ou "resumir"
+    nivel: str = Form("Médio"),
+    tom: str = Form("Didático")
 ):
-    # Junta questões do texto e arquivo se houver
     questoes = questoes_texto or ""
     if questoes_file is not None:
         questoes += "\n" + extract_text_from_file(questoes_file)
 
-    # Monta prompt para Gemini
     prompt = f"""
 Você é um especialista em concursos públicos.
-Analise as questões da banca {banca} ({cargo or '[não informado]'}, {ano or '[não informado]'}).
-Monte o seguinte quadro ANTES do conteúdo principal:
+Banca: {banca} | Nível: {nivel} | Tom: {tom} | Cargo: {cargo} | Ano: {ano}
+Comando: {command}
+Estilo de linguagem: {estilo_linguagem}
+MODO: {modo}
 
-| Tópico | Subtópico | Qtd. Questões | % de Incidência |
-| --- | --- | --- | --- |
-| ... (um por linha, ordem decrescente) |
-
-Depois do quadro, produza o material conforme instruções abaixo:
-
-MODO DE GERAÇÃO: {modo.upper()}
-Comando adicional: {command}
-Linguagem: {estilo_linguagem}
-
-Material base:
+Texto base:
 {text}
 
-QUESTÕES DA BANCA:
+Questões da banca (se houver):
 {questoes}
 
-Inclua exemplos, quadros, destaques (em cores), tabelas e questões inéditas no padrão da banca.
+# Instrução
+Gere o material solicitado acima. Faça resumo ou esquematize conforme o comando.
 """
-
     try:
-        model = genai.GenerativeModel("gemini-1.5-flash")  # Troque o modelo aqui se quiser
+        model = genai.GenerativeModel("gemini-1.5-flash")
         response = model.generate_content(prompt)
         result = response.text
     except Exception as e:
         return JSONResponse({"error": f"Erro ao chamar Gemini: {e}"}, status_code=500)
 
     return {"processed_text": result}
-
-# Você pode adicionar outras rotas para preview/exportação conforme o seu projeto!
