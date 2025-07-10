@@ -1,37 +1,25 @@
 from fastapi import FastAPI, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from enum import Enum
 import tempfile
 import os
 import pdfplumber
 from docx import Document
 import google.generativeai as genai
 import requests
-from bs4 import BeautifulSoup
-import re
 
-# CORS
+# Configuração Gemini
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "SUA_CHAVE_GEMINI_AQUI")
+genai.configure(api_key=GEMINI_API_KEY)
+
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Libera geral, ajuste se precisar
+    allow_origins=["*"],  # Libera geral (ajuste para seu domínio em produção)
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Gemini API Key
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "SUA_CHAVE_AQUI")
-genai.configure(api_key=GOOGLE_API_KEY)
-
-# Enum para bancas
-class Bancas(str, Enum):
-    fgv = "FGV"
-    cespe = "Cespe"
-    fcc = "FCC"
-    verbena = "Verbena"
-    outra = "Outra"
 
 def extract_text_from_file(file: UploadFile):
     ext = os.path.splitext(file.filename)[1].lower()
@@ -49,32 +37,49 @@ def extract_text_from_file(file: UploadFile):
         import pandas as pd
         df = pd.read_csv(temp_file.name, dtype=str)
         text = "\n".join([" | ".join(row) for row in df.values.tolist()])
-    else:
-        text = ""
+    elif ext == ".pdf":
+        with pdfplumber.open(temp_file.name) as pdf:
+            text = "\n".join([page.extract_text() or "" for page in pdf.pages])
     os.unlink(temp_file.name)
     return text
 
-def is_url(s):
-    return re.match(r'https?://', s.strip()) is not None
-
-def extract_text_from_url(url):
+def extract_text_from_link(link):
+    # Baixa arquivo PDF do link e extrai texto
     try:
-        r = requests.get(url, timeout=15)
+        r = requests.get(link)
         r.raise_for_status()
-        soup = BeautifulSoup(r.text, "html.parser")
-        for tag in soup(['script', 'style']):
-            tag.decompose()
-        text = soup.get_text(separator="\n")
-        text = "\n".join(line.strip() for line in text.splitlines() if line.strip())
-        return text
+        filename = link.split("/")[-1]
+        ext = os.path.splitext(filename)[1].lower()
+        with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as temp_file:
+            temp_file.write(r.content)
+            temp_file.close()
+            if ext == ".pdf":
+                with pdfplumber.open(temp_file.name) as pdf:
+                    text = "\n".join([page.extract_text() or "" for page in pdf.pages])
+            elif ext in [".docx", ".doc"]:
+                doc = Document(temp_file.name)
+                text = "\n".join([p.text for p in doc.paragraphs])
+            else:
+                text = ""
+            os.unlink(temp_file.name)
+            return text
     except Exception as e:
-        return f"[ERRO AO BAIXAR URL] {e}"
+        return f"Erro ao baixar ou extrair do link: {e}"
 
 @app.post("/upload")
 async def upload_file(
-    file: UploadFile = File(...),
-    paginas: str = Form(None)
+    file: UploadFile = File(None),
+    paginas: str = Form(None),
+    link: str = Form(None)
 ):
+    if link:
+        text = extract_text_from_link(link)
+        if not text or text.startswith("Erro"):
+            return JSONResponse({"error": f"Erro ao extrair do link: {text}"}, status_code=400)
+        return {"text": text}
+
+    if file is None:
+        return JSONResponse({"error": "Nenhum arquivo enviado."}, status_code=400)
     temp_file = tempfile.NamedTemporaryFile(delete=False)
     temp_file.write(await file.read())
     temp_file.close()
@@ -107,56 +112,43 @@ async def upload_file(
 @app.post("/process")
 async def process_text(
     text: str = Form(...),
-    command: str = Form(...),
-    estilo_linguagem: str = Form("técnico"),
-    banca: Bancas = Form(...),
-    questoes_texto: str = Form(None),
+    command: str = Form("esquematizar"),
+    estilo_linguagem: str = Form("padrão"),
+    banca: str = Form("FGV"),
+    nivel: str = Form("Médio"),
+    tom: str = Form("Didático"),
+    questoes_texto: str = Form(""),
     questoes_file: UploadFile = File(None),
-    cargo: str = Form(None),
-    ano: str = Form(None),
-    modo: str = Form("resumir")   # Novo campo para resumir ou esquematizar
+    questoes_link: str = Form(None),
+    cargo: str = Form(""),
+    ano: str = Form("")
 ):
-    # Se o campo text for uma URL, extrai o texto da URL
-    text_input = text
-    if is_url(text):
-        text_input = extract_text_from_url(text)
-        if text_input.startswith("[ERRO"):
-            return JSONResponse({"error": text_input}, status_code=400)
-
-    # Junta questões do texto e arquivo se houver
     questoes = questoes_texto or ""
+    # Permite enviar arquivo de questões OU link de questões
     if questoes_file is not None:
         questoes += "\n" + extract_text_from_file(questoes_file)
+    if questoes_link:
+        questoes += "\n" + extract_text_from_link(questoes_link)
 
     prompt = f"""
 Você é um especialista em concursos públicos.
-Analise as questões da banca {banca} ({cargo or '[não informado]'}, {ano or '[não informado]'}).
-Monte o seguinte quadro ANTES do conteúdo principal:
+Banca: {banca} | Nível: {nivel} | Tom: {tom} | Cargo: {cargo} | Ano: {ano}
+Comando: {command}
+Estilo de linguagem: {estilo_linguagem}
 
-| Tópico | Subtópico | Qtd. Questões | % de Incidência |
-| --- | --- | --- | --- |
-| ... (um por linha, ordem decrescente) |
+Texto base:
+{text}
 
-Depois do quadro, produza o material conforme instruções abaixo:
-
-MODO DE GERAÇÃO: {modo.upper()}
-Comando adicional: {command}
-Linguagem: {estilo_linguagem}
-
-Material base:
-{text_input}
-
-QUESTÕES DA BANCA:
+Questões da banca (se houver):
 {questoes}
 
-Inclua exemplos, quadros, destaques, tabelas e questões inéditas no padrão da banca.
+# Instrução
+Gere o material solicitado acima. Faça resumo ou esquematize conforme o comando.
 """
-
     try:
-        model = genai.GenerativeModel("gemini-1.5-flash")  # Troque o modelo se quiser
+        model = genai.GenerativeModel('gemini-1.5-flash')
         response = model.generate_content(prompt)
-        result = response.text
+        processed = response.text
     except Exception as e:
-        return JSONResponse({"error": f"Erro ao chamar Gemini: {e}"}, status_code=500)
-
-    return {"processed_text": result}
+        return JSONResponse({"error": f"Erro ao chamar Gemini: {str(e)}"}, status_code=500)
+    return {"processed_text": processed}
