@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile, Form
+from fastapi import FastAPI, File, UploadFile, Form, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from enum import Enum
@@ -15,20 +15,15 @@ from utils import (
     parse_indice_ia, add_indice_estatistico, parse_special_blocks
 )
 
+# CORS para permitir frontend separado
 app = FastAPI()
-
-# CORS LIBERADO
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Troque pelo domínio do Netlify se quiser restringir
+    allow_origins=["*"],  # Coloque seu domínio em produção
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-@app.get("/")
-def home():
-    return {"status": "OK", "msg": "Gabarite Backend Online"}
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "SUA_API_KEY_AQUI")
 
@@ -39,60 +34,18 @@ class Bancas(str, Enum):
     verbena = "Verbena"
     outra = "Outra"
 
-def extract_text_from_file(file: UploadFile):
-    ext = os.path.splitext(file.filename)[1].lower()
-    temp_file = tempfile.NamedTemporaryFile(delete=False)
-    temp_file.write(file.file.read())
-    temp_file.close()
-    text = ""
-    if ext == ".txt":
-        with open(temp_file.name, encoding="utf-8") as f:
-            text = f.read()
-    elif ext in [".docx", ".doc"]:
-        doc = Document(temp_file.name)
-        text = "\n".join([p.text for p in doc.paragraphs])
-    elif ext == ".csv":
-        import pandas as pd
-        df = pd.read_csv(temp_file.name, dtype=str)
-        text = "\n".join([" | ".join(row) for row in df.values.tolist()])
-    else:
-        text = ""
-    os.unlink(temp_file.name)
-    return text
+class Niveis(str, Enum):
+    facil = "Fácil"
+    medio = "Médio"
+    dificil = "Difícil"
 
-@app.post("/upload")
-async def upload_file(
-    file: UploadFile = File(...),
-    paginas: str = Form(None)
-):
-    temp_file = tempfile.NamedTemporaryFile(delete=False)
-    temp_file.write(await file.read())
-    temp_file.close()
-    ext = os.path.splitext(file.filename)[1]
-    if ext.lower() == ".pdf":
-        with pdfplumber.open(temp_file.name) as pdf:
-            num_pages = len(pdf.pages)
-            if paginas:
-                page_idxs = []
-                for bloco in paginas.split(','):
-                    bloco = bloco.strip()
-                    if '-' in bloco:
-                        ini, fim = map(int, bloco.split('-'))
-                        page_idxs.extend(list(range(ini-1, fim)))
-                    else:
-                        page_idxs.append(int(bloco)-1)
-                page_idxs = [i for i in page_idxs if 0 <= i < num_pages]
-                text = "\n".join([pdf.pages[i].extract_text() or "" for i in page_idxs])
-            else:
-                text = "\n".join([page.extract_text() or "" for page in pdf.pages])
-    elif ext.lower() in [".docx", ".doc"]:
-        doc = Document(temp_file.name)
-        text = "\n".join([p.text for p in doc.paragraphs])
-    else:
-        os.unlink(temp_file.name)
-        return JSONResponse({"error": "Formato não suportado"}, status_code=400)
-    os.unlink(temp_file.name)
-    return {"text": text}
+class Tons(str, Enum):
+    tecnico = "Técnico"
+    didatico = "Didático"
+    concurso = "Concursos"
+    personalizado = "Personalizado"
+
+# ... (mantenha o restante igual)
 
 @app.post("/process")
 async def process_text(
@@ -100,11 +53,14 @@ async def process_text(
     command: str = Form(...),
     estilo_linguagem: str = Form(None),
     banca: Bancas = Form(...),
+    nivel_dificuldade: Niveis = Form(None),       # <--- Novo campo
+    tom_linguagem: Tons = Form(None),             # <--- Novo campo
     questoes_texto: str = Form(None),
     questoes_file: UploadFile = File(None),
     cargo: str = Form(None),
     ano: str = Form(None)
 ):
+    openai.api_key = OPENAI_API_KEY
     questoes = questoes_texto or ""
     if questoes_file is not None:
         questoes += "\n" + extract_text_from_file(questoes_file)
@@ -125,10 +81,12 @@ QUESTÕES DA BANCA:
 {questoes}
 
 Comando extra: {command}
+Nível de dificuldade: {nivel_dificuldade}
+Tom de linguagem: {tom_linguagem}
 Linguagem desejada: {estilo_linguagem}
 """
-    client = openai.OpenAI(api_key=OPENAI_API_KEY)
-    response = client.chat.completions.create(
+    # ... Resto igual
+    response = openai.chat.completions.create(
         model="gpt-4o",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.3,
@@ -136,91 +94,3 @@ Linguagem desejada: {estilo_linguagem}
     )
     processed = response.choices[0].message.content
     return {"processed_text": processed}
-
-@app.post("/preview")
-async def preview_word(processed_text: str = Form(...)):
-    doc = Document()
-    set_header_footer(doc)
-    set_styles(doc)
-    add_titulo(doc, "Gabarite – Versão Legislação")
-    add_sumario(doc)
-    indice_dados = parse_indice_ia(processed_text)
-    if indice_dados:
-        add_titulo(doc, "Índice Estatístico de Cobrança da Banca")
-        add_indice_estatistico(doc, indice_dados)
-        add_pag_break(doc)
-    blocks = parse_special_blocks(processed_text)
-    for block in blocks:
-        if block["type"] == "texto":
-            add_paragrafo(doc, block["content"])
-        elif block["type"] == "grifo":
-            p = doc.add_paragraph()
-            run = p.add_run(block["content"])
-            cor = block.get("categoria", "Padrao").lower()
-            if cor == "permissão" or cor == "permissao":
-                run.font.highlight_color = 4
-            elif cor == "exceção" or cor == "negativa" or cor == "excecao":
-                run.font.highlight_color = 6
-            elif cor == "atenção" or cor == "atencao" or cor == "prazo":
-                run.font.highlight_color = 7
-            else:
-                run.font.highlight_color = 3
-            run.bold = True
-            p.add_run(f"  [{block.get('categoria','')}]").italic = True
-        elif block["type"] == "quadro":
-            linhas = [l for l in block["content"].split("\n") if "|" in l]
-            linhas = [list(map(str.strip, l.strip().strip("|").split("|"))) for l in linhas]
-            if linhas:
-                add_quadro(doc, "Quadro/Esquema", linhas)
-        elif block["type"] == "questao":
-            add_subtitulo(doc, "Questão (Padrão Banca)")
-            for line in block["content"].split("\n"):
-                add_paragrafo(doc, line)
-    temp_doc = tempfile.NamedTemporaryFile(delete=False, suffix=".docx")
-    doc.save(temp_doc.name)
-    temp_doc.close()
-    return FileResponse(temp_doc.name, filename="gabarite_legislacao_preview.docx", media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
-
-@app.post("/generate_word")
-async def generate_word(processed_text: str = Form(...)):
-    doc = Document()
-    set_header_footer(doc)
-    set_styles(doc)
-    add_titulo(doc, "Gabarite – Versão Legislação")
-    add_sumario(doc)
-    indice_dados = parse_indice_ia(processed_text)
-    if indice_dados:
-        add_titulo(doc, "Índice Estatístico de Cobrança da Banca")
-        add_indice_estatistico(doc, indice_dados)
-        add_pag_break(doc)
-    blocks = parse_special_blocks(processed_text)
-    for block in blocks:
-        if block["type"] == "texto":
-            add_paragrafo(doc, block["content"])
-        elif block["type"] == "grifo":
-            p = doc.add_paragraph()
-            run = p.add_run(block["content"])
-            cor = block.get("categoria", "Padrao").lower()
-            if cor == "permissão" or cor == "permissao":
-                run.font.highlight_color = 4
-            elif cor == "exceção" or cor == "negativa" or cor == "excecao":
-                run.font.highlight_color = 6
-            elif cor == "atenção" or cor == "atencao" or cor == "prazo":
-                run.font.highlight_color = 7
-            else:
-                run.font.highlight_color = 3
-            run.bold = True
-            p.add_run(f"  [{block.get('categoria','')}]").italic = True
-        elif block["type"] == "quadro":
-            linhas = [l for l in block["content"].split("\n") if "|" in l]
-            linhas = [list(map(str.strip, l.strip().strip("|").split("|"))) for l in linhas]
-            if linhas:
-                add_quadro(doc, "Quadro/Esquema", linhas)
-        elif block["type"] == "questao":
-            add_subtitulo(doc, "Questão (Padrão Banca)")
-            for line in block["content"].split("\n"):
-                add_paragrafo(doc, line)
-    temp_doc = tempfile.NamedTemporaryFile(delete=False, suffix=".docx")
-    doc.save(temp_doc.name)
-    temp_doc.close()
-    return FileResponse(temp_doc.name, filename="gabarite_legislacao.docx", media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
