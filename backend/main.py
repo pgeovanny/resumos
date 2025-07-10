@@ -1,5 +1,6 @@
 from fastapi import FastAPI, File, UploadFile, Form
 from fastapi.responses import FileResponse, JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 from enum import Enum
 import pdfplumber
 import tempfile
@@ -15,6 +16,19 @@ from utils import (
 )
 
 app = FastAPI()
+
+# ATENÇÃO: CORS LIBERADO PARA QUALQUER ORIGEM (necessário para o frontend no Netlify funcionar)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Troque para o domínio do seu Netlify quando estiver em produção
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+@app.get("/")
+def home():
+    return {"status": "OK", "msg": "Gabarite Backend Online"}
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "SUA_API_KEY_AQUI")
 
@@ -35,7 +49,6 @@ def extract_text_from_file(file: UploadFile):
         with open(temp_file.name, encoding="utf-8") as f:
             text = f.read()
     elif ext in [".docx", ".doc"]:
-        from docx import Document
         doc = Document(temp_file.name)
         text = "\n".join([p.text for p in doc.paragraphs])
     elif ext == ".csv":
@@ -73,7 +86,6 @@ async def upload_file(
             else:
                 text = "\n".join([page.extract_text() or "" for page in pdf.pages])
     elif ext.lower() in [".docx", ".doc"]:
-        from docx import Document
         doc = Document(temp_file.name)
         text = "\n".join([p.text for p in doc.paragraphs])
     else:
