@@ -1,6 +1,6 @@
 fastapi
 uvicorn
-google-generativeai
-pdfplumber
 python-docx
+pdfplumber
 python-multipart
+google-generativeai
