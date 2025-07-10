@@ -1,7 +1,6 @@
 fastapi
 uvicorn
+google-generativeai
 pdfplumber
 python-docx
-openai
 python-multipart
-pandas
