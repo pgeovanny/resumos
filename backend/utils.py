@@ -1,89 +1,65 @@
-from docx.shared import RGBColor
+import re
 
-def parse_indice_ia(texto_ia):
-    import re
-    dados = []
-    linhas = [l for l in texto_ia.split('\n') if '|' in l]
-    if len(linhas) < 3:
-        return dados
-    for l in linhas[2:]:
-        partes = [p.strip() for p in l.split('|')]
-        if len(partes) < 5: continue
-        try:
-            dados.append({
-                "topico": partes[1],
-                "subtopico": partes[2],
-                "qtd": int(partes[3]),
-                "porcentagem": float(str(partes[4]).replace('%','').replace(',','.'))
-            })
-        except:
-            continue
-    return dados
+def parse_indice_ia(processed_text: str):
+    """
+    Extrai a tabela índice do texto processado pela IA.
+    Retorna uma lista de linhas.
+    """
+    indice = []
+    padrao = r"\| *(.+?) *\| *(.+?) *\| *(.+?) *\| *(.+?) *\|"
+    linhas = processed_text.splitlines()
+    for linha in linhas:
+        m = re.match(padrao, linha)
+        if m and not "Tópico" in linha and not "---" in linha:
+            indice.append([m.group(1).strip(), m.group(2).strip(), m.group(3).strip(), m.group(4).strip()])
+    return indice if indice else None
 
-def add_indice_estatistico(doc, dados):
-    n_cols = 4
-    table = doc.add_table(rows=1, cols=n_cols)
-    table.style = 'Table Grid'
+def add_indice_estatistico(doc, indice_dados):
+    if not indice_dados:
+        return
+    table = doc.add_table(rows=1, cols=4)
     hdr_cells = table.rows[0].cells
-    hdr_cells[0].text = "Tópico"
-    hdr_cells[1].text = "Subtópico"
-    hdr_cells[2].text = "Qtd. Questões"
-    hdr_cells[3].text = "% de Incidência"
-    for cell in hdr_cells:
-        cell.paragraphs[0].runs[0].font.bold = True
-        cell.paragraphs[0].runs[0].font.color.rgb = RGBColor(0, 87, 255)
-    for d in dados:
+    for i, col in enumerate(["Tópico", "Subtópico", "Qtd. Questões", "% Incidência"]):
+        hdr_cells[i].text = col
+    for row in indice_dados:
         row_cells = table.add_row().cells
-        row_cells[0].text = d["topico"]
-        row_cells[1].text = d["subtopico"]
-        row_cells[2].text = str(d["qtd"])
-        row_cells[3].text = f'{d["porcentagem"]:.1f}%'
-        cor = RGBColor(0, 0, 0)
-        if d["porcentagem"] >= 15:
-            cor = RGBColor(46, 212, 122)  # Verde
-        elif d["porcentagem"] >= 8:
-            cor = RGBColor(255, 214, 0)   # Laranja
-        else:
-            cor = RGBColor(255, 88, 88)   # Vermelho
-        for i in range(n_cols):
-            for run in row_cells[i].paragraphs[0].runs:
-                run.font.color.rgb = cor
-    doc.add_paragraph(" ")
+        for i, item in enumerate(row):
+            row_cells[i].text = item
 
-def parse_special_blocks(text):
+def parse_special_blocks(processed_text: str):
+    """
+    Identifica blocos especiais do texto da IA:
+    - [QUADRO], [GRIFO categoria], [QUESTAO]
+    Retorna lista de dicts: {type: texto/quadro/grifo/questao, content:..., categoria:...}
+    """
     blocks = []
-    lines = text.split("\n")
-    i = 0
-    while i < len(lines):
-        line = lines[i].strip()
-        if line.startswith("[GRIFO"):
-            end = "[/GRIFO]"
-            categoria = "Padrao"
-            if "categoria=" in line:
-                categoria = line.split("categoria=")[1].split("]")[0]
-            content = []
-            i += 1
-            while i < len(lines) and not lines[i].strip().startswith(end):
-                content.append(lines[i])
-                i += 1
-            blocks.append({"type": "grifo", "categoria": categoria, "content": "\n".join(content)})
-        elif line.startswith("[QUADRO"):
-            end = "[/QUADRO]"
-            content = []
-            i += 1
-            while i < len(lines) and not lines[i].strip().startswith(end):
-                content.append(lines[i])
-                i += 1
-            blocks.append({"type": "quadro", "content": "\n".join(content)})
-        elif line.startswith("[QUESTAO"):
-            end = "[/QUESTAO]"
-            content = []
-            i += 1
-            while i < len(lines) and not lines[i].strip().startswith(end):
-                content.append(lines[i])
-                i += 1
-            blocks.append({"type": "questao", "content": "\n".join(content)})
-        elif line != "":
-            blocks.append({"type": "texto", "content": line})
-        i += 1
-    return blocks
+    lines = processed_text.splitlines()
+    buffer, tipo, categoria = [], "texto", None
+    for line in lines + [""]:
+        if line.strip().lower().startswith("[quadro"):
+            if buffer:
+                blocks.append({"type": tipo, "content": "\n".join(buffer)})
+                buffer = []
+            tipo = "quadro"
+            categoria = None
+        elif "[grifo" in line.lower():
+            if buffer:
+                blocks.append({"type": tipo, "content": "\n".join(buffer), "categoria": categoria})
+                buffer = []
+            tipo = "grifo"
+            m = re.search(r"\[grifo:? ?(.*?)\]", line, re.I)
+            categoria = m.group(1) if m else "Padrao"
+            buffer.append(line.replace(m.group(0), "") if m else line)
+        elif "[questao" in line.lower() or "[questão" in line.lower():
+            if buffer:
+                blocks.append({"type": tipo, "content": "\n".join(buffer), "categoria": categoria})
+                buffer = []
+            tipo = "questao"
+            categoria = None
+        elif line.strip() == "":
+            if buffer:
+                blocks.append({"type": tipo, "content": "\n".join(buffer), "categoria": categoria})
+                buffer, tipo, categoria = [], "texto", None
+        else:
+            buffer.append(line)
+    return [b for b in blocks if b.get("content") and b["content"].strip()]
