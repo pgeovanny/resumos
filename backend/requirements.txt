@@ -6,3 +6,8 @@ python-multipart
 google-generativeai
 beautifulsoup4
 requests
+fastapi
+uvicorn
+python-docx
+pdfplumber
+google-generativeai
