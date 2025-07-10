@@ -1,48 +1,38 @@
 from fastapi import FastAPI, File, UploadFile, Form
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from enum import Enum
 import pdfplumber
 import tempfile
 import os
 from docx import Document
-import openai
+import google.generativeai as genai
 
-from template_gabarite import (
-    set_header_footer, set_styles, add_sumario, add_titulo, add_subtitulo, add_paragrafo, add_quadro, add_pag_break
-)
-from utils import (
-    parse_indice_ia, add_indice_estatistico, parse_special_blocks
-)
+# ATENÇÃO: Coloque sua chave Gemini aqui ou em variável de ambiente GEMINI_API_KEY
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "SUA_CHAVE_GEMINI_AQUI")
+
+genai.configure(api_key=GEMINI_API_KEY)
 
 app = FastAPI()
+
+# Liberar CORS para seu frontend (ajuste se precisar)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Em produção, restrinja!
+    allow_origins=["*"],  # Ideal: ["https://SEU-FRONTEND.com"]
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "SUA_API_KEY_AQUI")
-
-class Bancas(str, Enum):
-    fgv = "FGV"
-    cespe = "Cespe"
-    fcc = "FCC"
-    verbena = "Verbena"
-    outra = "Outra"
-
-class Niveis(str, Enum):
-    facil = "Fácil"
-    medio = "Médio"
-    dificil = "Difícil"
-
-class Tons(str, Enum):
-    tecnico = "Técnico"
-    didatico = "Didático"
-    concurso = "Concursos"
-    personalizado = "Personalizado"
+def chamar_gemini(prompt, temperature=0.3, max_tokens=2048):
+    model = genai.GenerativeModel('gemini-pro')
+    response = model.generate_content(
+        prompt,
+        generation_config={
+            "temperature": temperature,
+            "max_output_tokens": max_tokens
+        }
+    )
+    return response.text.strip()
 
 def extract_text_from_file(file: UploadFile):
     ext = os.path.splitext(file.filename)[1].lower()
@@ -102,49 +92,38 @@ async def upload_file(
 @app.post("/process")
 async def process_text(
     text: str = Form(...),
-    command: str = Form(...),
-    estilo_linguagem: str = Form(None),
-    banca: Bancas = Form(...),
-    nivel_dificuldade: Niveis = Form(None),
-    tom_linguagem: Tons = Form(None),
-    questoes_texto: str = Form(None),
+    command: str = Form("esquematizar"),
+    estilo_linguagem: str = Form("padrão"),
+    banca: str = Form("FGV"),
+    nivel: str = Form("Médio"),
+    tom: str = Form("Didático"),
+    questoes_texto: str = Form(""),
     questoes_file: UploadFile = File(None),
-    cargo: str = Form(None),
-    ano: str = Form(None)
+    cargo: str = Form(""),
+    ano: str = Form("")
 ):
-    openai.api_key = OPENAI_API_KEY
     questoes = questoes_texto or ""
     if questoes_file is not None:
         questoes += "\n" + extract_text_from_file(questoes_file)
     prompt = f"""
-Você é um especialista em concursos.
-Sua tarefa é "{command}" o conteúdo base abaixo.
-Banca: {banca}
-Nível de dificuldade: {nivel_dificuldade}
-Tom de linguagem: {tom_linguagem}
-Cargo: {cargo or '[não informado]'}, Ano: {ano or '[não informado]'}
+Você é um especialista em concursos públicos.
+Banca: {banca} | Nível: {nivel} | Tom: {tom} | Cargo: {cargo} | Ano: {ano}
+Comando: {command}
+Estilo de linguagem: {estilo_linguagem}
 
-Monte o seguinte quadro ANTES do conteúdo principal:
-
-| Tópico | Subtópico | Qtd. Questões | % de Incidência |
-| --- | --- | --- | --- |
-| ... (um por linha, ordem decrescente) |
-
-Depois do quadro, produza o material conforme instruções (esquematizado/resumido, incluindo as questões reais nos tópicos corretos, sempre explicando como o conteúdo cobre a resposta).
-No final, gere 3 questões inéditas no padrão da banca.
-Conteúdo base:
+Texto base:
 {text}
-QUESTÕES DA BANCA:
+
+Questões da banca (se houver):
 {questoes}
 
-Comando extra: {command}
-Linguagem desejada: {estilo_linguagem}
+# Instrução
+Gere o material solicitado acima. Faça resumo ou esquematize conforme o comando.
 """
-    response = openai.chat.completions.create(
-        model="gpt-4o",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.3,
-        max_tokens=4096
-    )
-    processed = response.choices[0].message.content
+    try:
+        processed = chamar_gemini(prompt)
+    except Exception as e:
+        return JSONResponse({"error": f"Erro ao chamar Gemini: {str(e)}"}, status_code=500)
     return {"processed_text": processed}
+
+# Se quiser, adicione endpoint para download, etc.
