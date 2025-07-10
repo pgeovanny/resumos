@@ -1,145 +1,136 @@
 import React, { useState } from "react";
+import Stepper from "./components/Stepper";
+import PDFUpload from "./components/PDFUpload";
+import QuestaoUpload from "./components/QuestaoUpload";
+import BancaSelect from "./components/BancaSelect";
+import PreviewResumo from "./components/PreviewResumo";
+import ConfirmDialog from "./components/ConfirmDialog";
+import { uploadPDF, processText } from "./api";
+
+const steps = [
+  "1. Envie o PDF/Word da Lei ou Matéria",
+  "2. Anexe arquivo de Questões (opcional)",
+  "3. Escolha a banca e modo",
+  "4. Pré-visualização",
+  "5. Exportar",
+];
 
 export default function App() {
-  const [acao, setAcao] = useState("esquematizar");
-  const [banca, setBanca] = useState("Cespe");
-  const [nivel, setNivel] = useState("Médio");
-  const [tom, setTom] = useState("Concursos");
-  const [estilo, setEstilo] = useState("padrão");
-  const [command, setCommand] = useState("esquematizar");
-  const [textFile, setTextFile] = useState(null); // NOVO: arquivo base
-  const [paginas, setPaginas] = useState("");
-  const [questoesTexto, setQuestoesTexto] = useState("");
-  const [questoesFile, setQuestoesFile] = useState(null);
-  const [cargo, setCargo] = useState("");
-  const [ano, setAno] = useState("");
-  const [result, setResult] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [step, setStep] = useState(0);
 
-  // 1. Upload do arquivo base (PDF/DOCX) para extrair texto!
-  async function handleUploadArquivoBase(e) {
-    const file = e.target.files[0];
-    setTextFile(file);
-  }
+  // Arquivos e dados
+  const [fileBase, setFileBase] = useState(null);
+  const [fileQuestoes, setFileQuestoes] = useState(null);
+  const [textBase, setTextBase] = useState("");
+  const [questoesText, setQuestoesText] = useState("");
+  const [banca, setBanca] = useState("");
+  const [modo, setModo] = useState("resumo");
+  const [preview, setPreview] = useState("");
+  const [exportDialog, setExportDialog] = useState(false);
 
-  async function extrairTextoBase() {
-    if (!textFile) return "";
+  // Step 1: Upload base PDF
+  const handleFileBase = async (file) => {
+    setFileBase(file);
     const formData = new FormData();
-    formData.append("file", textFile);
-    formData.append("paginas", paginas);
-    const resp = await fetch("https://resumos.onrender.com/upload", { method: "POST", body: formData });
-    const data = await resp.json();
-    return data.text || "";
-  }
+    formData.append("file", file);
+    formData.append("tipo", "resumo");
+    const res = await uploadPDF(formData);
+    setTextBase(res.text);
+  };
 
-  // 2. Enviar tudo para a IA
-  const enviar = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    // Pega texto do arquivo, se houver
-    let textoBase = await extrairTextoBase();
+  // Step 2: Upload questões
+  const handleFileQuestoes = async (file) => {
+    setFileQuestoes(file);
     const formData = new FormData();
-    formData.append("text", textoBase);
-    formData.append("command", acao); // esquematizar ou resumir
-    formData.append("estilo_linguagem", estilo);
+    formData.append("file", file);
+    formData.append("tipo", "questoes");
+    const res = await uploadPDF(formData);
+    setQuestoesText(res.text);
+  };
+
+  // Step 3: Processar com IA
+  const handleGerar = async () => {
+    const formData = new FormData();
+    formData.append("texto_base", textBase);
+    formData.append("questoes_texto", questoesText);
     formData.append("banca", banca);
-    formData.append("nivel_dificuldade", nivel);
-    formData.append("tom_linguagem", tom);
-    formData.append("questoes_texto", questoesTexto);
-    if (questoesFile) formData.append("questoes_file", questoesFile);
-    formData.append("cargo", cargo);
-    formData.append("ano", ano);
-
-    try {
-      const resp = await fetch("https://resumos.onrender.com/process", {
-        method: "POST",
-        body: formData,
-      });
-      const data = await resp.json();
-      setResult(data.processed_text || JSON.stringify(data));
-    } catch (err) {
-      setResult("Erro ao processar texto!");
-    }
-    setLoading(false);
+    formData.append("modo", modo);
+    const res = await processText(formData);
+    setPreview(res.processed_text);
+    setStep(3);
   };
 
   return (
-    <form onSubmit={enviar} style={{ padding: 20 }}>
-      <h1>Gabarite – Versão Legislação</h1>
+    <div className="min-h-screen bg-gray-100 py-8">
+      <div className="max-w-4xl mx-auto p-6 bg-white rounded-2xl shadow-xl">
+        <Stepper current={step} steps={steps} />
 
-      <div>
-        <label>Ação:</label>
-        <label>
-          <input type="radio" value="resumir" checked={acao === "resumir"} onChange={() => setAcao("resumir")} />
-          Resumir
-        </label>
-        <label>
-          <input type="radio" value="esquematizar" checked={acao === "esquematizar"} onChange={() => setAcao("esquematizar")} />
-          Esquematizar
-        </label>
-      </div>
+        {step === 0 && (
+          <PDFUpload onChange={handleFileBase} filename={fileBase?.name} />
+        )}
 
-      <div>
-        <label>Arquivo base (.pdf, .docx):</label>
-        <input type="file" accept=".pdf,.docx" onChange={handleUploadArquivoBase} />
-        <span> (opcional: páginas ex: 1-5,7) </span>
-        <input type="text" value={paginas} onChange={e => setPaginas(e.target.value)} placeholder="Quais páginas?" style={{width:100}}/>
-      </div>
+        {step === 0 && fileBase && (
+          <button className="mt-6 bg-blue-700 text-white px-6 py-2 rounded-xl" onClick={() => setStep(1)}>
+            Próximo
+          </button>
+        )}
 
-      <div>
-        <label>Banca:</label>
-        {["Cespe", "FGV", "FCC", "Verbena", "Outra"].map((b) => (
-          <label key={b}>
-            <input type="radio" value={b} checked={banca === b} onChange={() => setBanca(b)} />
-            {b}
-          </label>
-        ))}
+        {step === 1 && (
+          <>
+            <QuestaoUpload onChange={handleFileQuestoes} filename={fileQuestoes?.name} />
+            <button className="mt-6 bg-blue-700 text-white px-6 py-2 rounded-xl" onClick={() => setStep(2)}>
+              {fileQuestoes ? "Próximo" : "Pular"}
+            </button>
+          </>
+        )}
+
+        {step === 2 && (
+          <>
+            <div className="mb-6">
+              <BancaSelect value={banca} onChange={setBanca} />
+              <div className="flex gap-4 mt-3 justify-center">
+                <label className="font-semibold">
+                  <input
+                    type="radio"
+                    checked={modo === "resumo"}
+                    onChange={() => setModo("resumo")}
+                  />{" "}
+                  Resumir
+                </label>
+                <label className="font-semibold">
+                  <input
+                    type="radio"
+                    checked={modo === "esquematizar"}
+                    onChange={() => setModo("esquematizar")}
+                  />{" "}
+                  Esquematizar
+                </label>
+              </div>
+            </div>
+            <button
+              className="bg-blue-700 text-white px-6 py-2 rounded-xl"
+              onClick={handleGerar}
+              disabled={!banca}
+            >
+              Gerar prévia
+            </button>
+          </>
+        )}
+
+        {step === 3 && (
+          <PreviewResumo
+            resumo={preview}
+            onAprovar={() => setExportDialog(true)}
+            onEditar={() => setStep(2)}
+          />
+        )}
+
+        <ConfirmDialog
+          open={exportDialog}
+          onConfirm={() => alert("Exportação para Word/PDF Premium em desenvolvimento")}
+          onCancel={() => setExportDialog(false)}
+        />
       </div>
-      <div>
-        <label>Nível:</label>
-        {["Fácil", "Médio", "Difícil"].map((n) => (
-          <label key={n}>
-            <input type="radio" value={n} checked={nivel === n} onChange={() => setNivel(n)} />
-            {n}
-          </label>
-        ))}
-      </div>
-      <div>
-        <label>Tom:</label>
-        {["Técnico", "Didático", "Concursos", "Personalizado"].map((t) => (
-          <label key={t}>
-            <input type="radio" value={t} checked={tom === t} onChange={() => setTom(t)} />
-            {t}
-          </label>
-        ))}
-      </div>
-      <div>
-        <label>Estilo de linguagem:</label>
-        <input value={estilo} onChange={e => setEstilo(e.target.value)} />
-      </div>
-      <div>
-        <label>Cargo:</label>
-        <input value={cargo} onChange={e => setCargo(e.target.value)} />
-      </div>
-      <div>
-        <label>Ano:</label>
-        <input value={ano} onChange={e => setAno(e.target.value)} />
-      </div>
-      <div>
-        <label>Questões da banca (texto):</label>
-        <textarea value={questoesTexto} onChange={e => setQuestoesTexto(e.target.value)} />
-      </div>
-      <div>
-        <label>Ou arquivo de questões (.txt, .docx, .csv):</label>
-        <input type="file" onChange={e => setQuestoesFile(e.target.files[0])} />
-      </div>
-      <div>
-        <button type="submit" disabled={loading}>{loading ? "Enviando..." : "Enviar para IA"}</button>
-      </div>
-      <div>
-        <b>Resultado:</b>
-        <pre>{result}</pre>
-      </div>
-    </form>
+    </div>
   );
 }
