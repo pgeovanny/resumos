@@ -2,27 +2,32 @@
 <html lang="pt-br">
 <head>
   <meta charset="UTF-8" />
-  <title>Resumos Legislação com IA</title>
+  <title>Resumos &amp; Esquematizações de Legislação</title>
   <style>
     body { background: #181A1F; color: #fff; font-family: Arial, sans-serif; padding: 32px; }
+    .container { background: #23272F; border-radius: 18px; padding: 28px; box-shadow: 0 3px 12px #0007; max-width: 600px; margin: auto;}
     label { display: block; margin: 16px 0 4px; }
     input, select, textarea, button {
       font-size: 1em; width: 100%; max-width: 500px; margin-bottom: 12px; border-radius: 8px;
       border: none; padding: 10px;
     }
     button { background: #0057FF; color: #fff; font-weight: bold; cursor: pointer; }
-    .container { background: #23272F; border-radius: 18px; padding: 28px; box-shadow: 0 3px 12px #0007; max-width: 600px; margin: auto;}
     .output { background: #222; border-radius: 10px; margin-top: 20px; padding: 16px; white-space: pre-wrap;}
-    .file-label { margin-top: 12px; }
   </style>
 </head>
 <body>
   <div class="container">
-    <h2>Resumos & Esquematizações de Legislação por IA</h2>
+    <h2>Resumos &amp; Esquematizações de Legislação por IA</h2>
     <form id="resumoForm">
-      <label for="text">Texto base (ou <b>cole o link da lei</b>):</label>
-      <textarea id="text" name="text" rows="5" required placeholder="Cole aqui o texto OU um link de lei"></textarea>
+      <!-- 1) Upload do PDF -->
+      <label for="pdf_file">Arquivo PDF (lei ou questões):</label>
+      <input type="file" id="pdf_file" name="file" accept=".pdf">
 
+      <!-- 2) Ou link da lei -->
+      <label for="link_lei">Ou cole o link da lei:</label>
+      <input type="url" id="link_lei" name="link_lei" placeholder="https://exemplo.com/lei.pdf">
+
+      <!-- 3) Banca -->
       <label for="banca">Banca:</label>
       <select id="banca" name="banca" required>
         <option value="FGV">FGV</option>
@@ -32,82 +37,65 @@
         <option value="Outra">Outra</option>
       </select>
 
-      <label for="command">Comando:</label>
-      <select id="command" name="command" required>
+      <!-- 4) Modo: resumir ou esquematizar -->
+      <label for="modo">Modo:</label>
+      <select id="modo" name="modo" required>
         <option value="resumir">Resumir</option>
         <option value="esquematizar">Esquematizar</option>
       </select>
 
-      <label for="nivel">Nível:</label>
-      <select id="nivel" name="nivel">
-        <option value="Médio">Médio</option>
-        <option value="Superior">Superior</option>
-        <option value="Técnico">Técnico</option>
-        <option value="Outro">Outro</option>
-      </select>
-
-      <label for="tom">Tom do texto:</label>
-      <select id="tom" name="tom">
-        <option value="Didático">Didático</option>
-        <option value="Técnico">Técnico</option>
-        <option value="Resumido">Resumido</option>
-        <option value="Jurídico">Jurídico</option>
-      </select>
-
-      <label for="estilo_linguagem">Estilo de linguagem:</label>
-      <select id="estilo_linguagem" name="estilo_linguagem">
-        <option value="padrão">Padrão</option>
-        <option value="técnico">Técnico</option>
-        <option value="resumido">Resumido</option>
-      </select>
-
-      <label for="cargo">Cargo:</label>
-      <input type="text" id="cargo" name="cargo" placeholder="Ex: Analista, Escrivão, etc.">
-
-      <label for="ano">Ano:</label>
-      <input type="text" id="ano" name="ano" placeholder="Ex: 2023">
-
-      <label for="questoes_texto">Questões (opcional, cole aqui):</label>
-      <textarea id="questoes_texto" name="questoes_texto" rows="2" placeholder="Cole aqui questões reais da banca, se quiser"></textarea>
-
-      <label class="file-label" for="questoes_file">Ou anexe arquivo de questões (docx, txt, csv):</label>
-      <input type="file" id="questoes_file" name="questoes_file" accept=".docx,.txt,.csv">
-
-      <button type="submit">Gerar Resumo/Esquematização</button>
+      <button type="submit">Gerar</button>
     </form>
     <div id="output" class="output"></div>
   </div>
+
   <script>
-    document.getElementById('resumoForm').onsubmit = async function(e) {
-      e.preventDefault();
-      const form = e.target;
-      const formData = new FormData(form);
+  document.getElementById('resumoForm').onsubmit = async function(e) {
+    e.preventDefault();
+    const form = e.target;
+    const output = document.getElementById('output');
+    output.textContent = 'Processando… ⏳';
 
-      // O backend espera o campo "modo"!
-      formData.append("modo", form.command.value);
-
-      // Corrige nome do campo caso você precise trocar no back
-      // formData.append("command", form.command.value);
-
-      document.getElementById('output').innerHTML = 'Processando... Aguarde ⏳';
-
-      try {
-        const resp = await fetch('https://resumos.onrender.com/process', {
+    try {
+      // 1) Se veio PDF, faz upload e extrai texto
+      let text = '';
+      const pdf = form.pdf_file.files[0];
+      if (pdf) {
+        const up = new FormData();
+        up.append('file', pdf);
+        // opcional: páginas, ex: up.append('paginas','1-3,5');
+        const r1 = await fetch('https://resumos.onrender.com/upload', {
           method: 'POST',
-          body: formData,
+          body: up
         });
-        const data = await resp.json();
-        if (data.processed_text) {
-          document.getElementById('output').textContent = data.processed_text;
-        } else if (data.error) {
-          document.getElementById('output').textContent = "Erro: " + data.error;
-        } else {
-          document.getElementById('output').textContent = "Erro inesperado.";
-        }
-      } catch (err) {
-        document.getElementById('output').textContent = "Erro na requisição.";
+        const j1 = await r1.json();
+        if (j1.error) throw new Error(j1.error);
+        text = j1.text;
       }
-    };
+      // 2) Se não veio PDF mas tem link, usa o link como "texto"
+      else if (form.link_lei.value) {
+        text = form.link_lei.value;
+      } else {
+        throw new Error('Envie um PDF ou cole o link da lei.');
+      }
+
+      // 3) Chama /process
+      const proc = new FormData();
+      proc.append('text', text);
+      proc.append('banca', form.banca.value);
+      proc.append('modo', form.modo.value);
+
+      const r2 = await fetch('https://resumos.onrender.com/process', {
+        method: 'POST',
+        body: proc
+      });
+      const j2 = await r2.json();
+      if (j2.error) throw new Error(j2.error);
+      output.textContent = j2.processed_text;
+    } catch (err) {
+      output.textContent = 'Erro: ' + err.message;
+    }
+  };
   </script>
 </body>
 </html>
