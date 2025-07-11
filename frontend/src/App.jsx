@@ -18,8 +18,6 @@ const steps = [
 
 export default function App() {
   const [step, setStep] = useState(0);
-
-  // Arquivos e dados
   const [fileBase, setFileBase] = useState(null);
   const [fileQuestoes, setFileQuestoes] = useState(null);
   const [textBase, setTextBase] = useState("");
@@ -29,34 +27,31 @@ export default function App() {
   const [preview, setPreview] = useState("");
   const [exportDialog, setExportDialog] = useState(false);
 
-  // Step 1: Upload base PDF
   const handleFileBase = async (file) => {
     setFileBase(file);
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("tipo", "resumo");
-    const res = await uploadPDF(formData);
+    const form = new FormData();
+    form.append("file", file);
+    form.append("tipo", "resumo");
+    const res = await uploadPDF(form);
     setTextBase(res.text);
   };
 
-  // Step 2: Upload questões
   const handleFileQuestoes = async (file) => {
     setFileQuestoes(file);
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("tipo", "questoes");
-    const res = await uploadPDF(formData);
+    const form = new FormData();
+    form.append("file", file);
+    form.append("tipo", "questoes");
+    const res = await uploadPDF(form);
     setQuestoesText(res.text);
   };
 
-  // Step 3: Processar com IA
   const handleGerar = async () => {
-    const formData = new FormData();
-    formData.append("texto_base", textBase);
-    formData.append("questoes_texto", questoesText);
-    formData.append("banca", banca);
-    formData.append("modo", modo);
-    const res = await processText(formData);
+    const form = new FormData();
+    form.append("texto_base", textBase);
+    form.append("questoes_texto", questoesText);
+    form.append("banca", banca);
+    form.append("modo", modo);
+    const res = await processText(form);
     setPreview(res.processed_text);
     setStep(3);
   };
@@ -67,23 +62,22 @@ export default function App() {
         <Stepper current={step} steps={steps} />
 
         {step === 0 && (
-          <PDFUpload onChange={handleFileBase} filename={fileBase?.name} />
-        )}
-        {step === 0 && fileBase && (
-          <button
-            className="mt-6 bg-blue-700 text-white px-6 py-2 rounded-xl"
-            onClick={() => setStep(1)}
-          >
-            Próximo
-          </button>
+          <>
+            <PDFUpload onChange={handleFileBase} filename={fileBase?.name} />
+            {fileBase && (
+              <button
+                className="mt-6 bg-blue-700 text-white px-6 py-2 rounded-xl"
+                onClick={() => setStep(1)}
+              >
+                Próximo
+              </button>
+            )}
+          </>
         )}
 
         {step === 1 && (
           <>
-            <QuestaoUpload
-              onChange={handleFileQuestoes}
-              filename={fileQuestoes?.name}
-            />
+            <QuestaoUpload onChange={handleFileQuestoes} filename={fileQuestoes?.name} />
             <button
               className="mt-6 bg-blue-700 text-white px-6 py-2 rounded-xl"
               onClick={() => setStep(2)}
@@ -95,29 +89,27 @@ export default function App() {
 
         {step === 2 && (
           <>
-            <div className="mb-6">
-              <BancaSelect value={banca} onChange={setBanca} />
-              <div className="flex gap-4 mt-3 justify-center">
-                <label className="font-semibold">
-                  <input
-                    type="radio"
-                    checked={modo === "resumo"}
-                    onChange={() => setModo("resumo")}
-                  />{" "}
-                  Resumir
-                </label>
-                <label className="font-semibold">
-                  <input
-                    type="radio"
-                    checked={modo === "esquematizar"}
-                    onChange={() => setModo("esquematizar")}
-                  />{" "}
-                  Esquematizar
-                </label>
-              </div>
+            <BancaSelect value={banca} onChange={setBanca} />
+            <div className="flex gap-4 mt-3 justify-center">
+              <label>
+                <input
+                  type="radio"
+                  checked={modo === "resumo"}
+                  onChange={() => setModo("resumo")}
+                />{" "}
+                Resumir
+              </label>
+              <label>
+                <input
+                  type="radio"
+                  checked={modo === "esquematizar"}
+                  onChange={() => setModo("esquematizar")}
+                />{" "}
+                Esquematizar
+              </label>
             </div>
             <button
-              className="bg-blue-700 text-white px-6 py-2 rounded-xl"
+              className="mt-6 bg-blue-700 text-white px-6 py-2 rounded-xl"
               onClick={handleGerar}
               disabled={!banca}
             >
@@ -136,9 +128,7 @@ export default function App() {
 
         <ConfirmDialog
           open={exportDialog}
-          onConfirm={() =>
-            alert("Exportação para Word/PDF Premium em desenvolvimento")
-          }
+          onConfirm={() => alert("Exportação para Word/PDF Premium em desenvolvimento")}
           onCancel={() => setExportDialog(false)}
         />
       </div>
