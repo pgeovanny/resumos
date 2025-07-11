@@ -1,3 +1,4 @@
+// src/App.jsx
 import React, { useState } from "react";
 import Stepper from "./components/Stepper";
 import PDFUpload from "./components/PDFUpload";
@@ -8,9 +9,9 @@ import ConfirmDialog from "./components/ConfirmDialog";
 import { uploadPDF, processText } from "./api";
 
 const steps = [
-  "1. Envie o PDF da Lei/Matéria",
+  "1. Envie o PDF/Word da Lei ou Matéria",
   "2. Anexe arquivo de Questões (opcional)",
-  "3. Escolha banca e modo",
+  "3. Escolha a banca e modo",
   "4. Pré-visualização",
   "5. Exportar",
 ];
@@ -18,43 +19,45 @@ const steps = [
 export default function App() {
   const [step, setStep] = useState(0);
 
-  // estados de upload e dados
+  // Arquivos e dados
   const [fileBase, setFileBase] = useState(null);
-  const [textBase, setTextBase] = useState("");
   const [fileQuestoes, setFileQuestoes] = useState(null);
+  const [textBase, setTextBase] = useState("");
   const [questoesText, setQuestoesText] = useState("");
   const [banca, setBanca] = useState("");
-  const [modo, setModo] = useState("resumir");
+  const [modo, setModo] = useState("resumo");
   const [preview, setPreview] = useState("");
   const [exportDialog, setExportDialog] = useState(false);
 
-  // Step 1: upload do PDF principal
+  // Step 1: Upload base PDF
   const handleFileBase = async (file) => {
     setFileBase(file);
-    const fd = new FormData();
-    fd.append("file", file);
-    const { text } = await uploadPDF(fd);
-    setTextBase(text);
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("tipo", "resumo");
+    const res = await uploadPDF(formData);
+    setTextBase(res.text);
   };
 
-  // Step 2: upload do PDF/arquivo de questões
+  // Step 2: Upload questões
   const handleFileQuestoes = async (file) => {
     setFileQuestoes(file);
-    const fd = new FormData();
-    fd.append("file", file);
-    const { text } = await uploadPDF(fd);
-    setQuestoesText(text);
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("tipo", "questoes");
+    const res = await uploadPDF(formData);
+    setQuestoesText(res.text);
   };
 
-  // Step 3: gera a pré-visualização
+  // Step 3: Processar com IA
   const handleGerar = async () => {
-    const fd = new FormData();
-    fd.append("text", textBase);
-    if (questoesText) fd.append("questoes_texto", questoesText);
-    fd.append("banca", banca);
-    fd.append("modo", modo);
-    const { processed_text } = await processText(fd);
-    setPreview(processed_text);
+    const formData = new FormData();
+    formData.append("texto_base", textBase);
+    formData.append("questoes_texto", questoesText);
+    formData.append("banca", banca);
+    formData.append("modo", modo);
+    const res = await processText(formData);
+    setPreview(res.processed_text);
     setStep(3);
   };
 
@@ -64,20 +67,15 @@ export default function App() {
         <Stepper current={step} steps={steps} />
 
         {step === 0 && (
-          <>
-            <PDFUpload
-              onChange={handleFileBase}
-              filename={fileBase?.name}
-            />
-            {fileBase && (
-              <button
-                className="mt-6 bg-blue-700 text-white px-6 py-2 rounded-xl"
-                onClick={() => setStep(1)}
-              >
-                Próximo
-              </button>
-            )}
-          </>
+          <PDFUpload onChange={handleFileBase} filename={fileBase?.name} />
+        )}
+        {step === 0 && fileBase && (
+          <button
+            className="mt-6 bg-blue-700 text-white px-6 py-2 rounded-xl"
+            onClick={() => setStep(1)}
+          >
+            Próximo
+          </button>
         )}
 
         {step === 1 && (
@@ -103,16 +101,14 @@ export default function App() {
                 <label className="font-semibold">
                   <input
                     type="radio"
-                    value="resumir"
-                    checked={modo === "resumir"}
-                    onChange={() => setModo("resumir")}
+                    checked={modo === "resumo"}
+                    onChange={() => setModo("resumo")}
                   />{" "}
                   Resumir
                 </label>
                 <label className="font-semibold">
                   <input
                     type="radio"
-                    value="esquematizar"
                     checked={modo === "esquematizar"}
                     onChange={() => setModo("esquematizar")}
                   />{" "}
