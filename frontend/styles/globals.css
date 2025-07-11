@@ -2,4 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* suas customizações abaixo */
+/* Aqui vão overrides globais, se precisar */
+body {
+  @apply text-gray-800;
+}
