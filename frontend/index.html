@@ -1,101 +1,13 @@
-<!DOCTYPE html>
-<html lang="pt-br">
-<head>
-  <meta charset="UTF-8" />
-  <title>Resumos &amp; Esquematizações de Legislação</title>
-  <style>
-    body { background: #181A1F; color: #fff; font-family: Arial, sans-serif; padding: 32px; }
-    .container { background: #23272F; border-radius: 18px; padding: 28px; box-shadow: 0 3px 12px #0007; max-width: 600px; margin: auto;}
-    label { display: block; margin: 16px 0 4px; }
-    input, select, textarea, button {
-      font-size: 1em; width: 100%; max-width: 500px; margin-bottom: 12px; border-radius: 8px;
-      border: none; padding: 10px;
-    }
-    button { background: #0057FF; color: #fff; font-weight: bold; cursor: pointer; }
-    .output { background: #222; border-radius: 10px; margin-top: 20px; padding: 16px; white-space: pre-wrap;}
-  </style>
-</head>
-<body>
-  <div class="container">
-    <h2>Resumos &amp; Esquematizações de Legislação por IA</h2>
-    <form id="resumoForm">
-      <!-- 1) Upload do PDF -->
-      <label for="pdf_file">Arquivo PDF (lei ou questões):</label>
-      <input type="file" id="pdf_file" name="file" accept=".pdf">
-
-      <!-- 2) Ou link da lei -->
-      <label for="link_lei">Ou cole o link da lei:</label>
-      <input type="url" id="link_lei" name="link_lei" placeholder="https://exemplo.com/lei.pdf">
-
-      <!-- 3) Banca -->
-      <label for="banca">Banca:</label>
-      <select id="banca" name="banca" required>
-        <option value="FGV">FGV</option>
-        <option value="Cespe">Cespe</option>
-        <option value="FCC">FCC</option>
-        <option value="Verbena">Verbena</option>
-        <option value="Outra">Outra</option>
-      </select>
-
-      <!-- 4) Modo: resumir ou esquematizar -->
-      <label for="modo">Modo:</label>
-      <select id="modo" name="modo" required>
-        <option value="resumir">Resumir</option>
-        <option value="esquematizar">Esquematizar</option>
-      </select>
-
-      <button type="submit">Gerar</button>
-    </form>
-    <div id="output" class="output"></div>
-  </div>
-
-  <script>
-  document.getElementById('resumoForm').onsubmit = async function(e) {
-    e.preventDefault();
-    const form = e.target;
-    const output = document.getElementById('output');
-    output.textContent = 'Processando… ⏳';
-
-    try {
-      // 1) Se veio PDF, faz upload e extrai texto
-      let text = '';
-      const pdf = form.pdf_file.files[0];
-      if (pdf) {
-        const up = new FormData();
-        up.append('file', pdf);
-        // opcional: páginas, ex: up.append('paginas','1-3,5');
-        const r1 = await fetch('https://resumos.onrender.com/upload', {
-          method: 'POST',
-          body: up
-        });
-        const j1 = await r1.json();
-        if (j1.error) throw new Error(j1.error);
-        text = j1.text;
-      }
-      // 2) Se não veio PDF mas tem link, usa o link como "texto"
-      else if (form.link_lei.value) {
-        text = form.link_lei.value;
-      } else {
-        throw new Error('Envie um PDF ou cole o link da lei.');
-      }
-
-      // 3) Chama /process
-      const proc = new FormData();
-      proc.append('text', text);
-      proc.append('banca', form.banca.value);
-      proc.append('modo', form.modo.value);
-
-      const r2 = await fetch('https://resumos.onrender.com/process', {
-        method: 'POST',
-        body: proc
-      });
-      const j2 = await r2.json();
-      if (j2.error) throw new Error(j2.error);
-      output.textContent = j2.processed_text;
-    } catch (err) {
-      output.textContent = 'Erro: ' + err.message;
-    }
-  };
-  </script>
-</body>
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#20313d" />
+    <title>Resumos SF | Área de Membros</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
 </html>
